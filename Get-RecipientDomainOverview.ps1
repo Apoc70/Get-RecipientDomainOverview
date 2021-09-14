@@ -7,7 +7,7 @@
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE 
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 	
-    Version 1.0, 2021-09-14
+    Version 1.1, 2021-09-14
 
     Ideas, comments, and suggestions via GitHub.
  
@@ -31,6 +31,7 @@
     Revision History 
     -------------------------------------------------------------------------------- 
     1.0 Initial community release 
+    1.1 Some PowerShell performance enhancements
     
 	
     .PARAMETER DomainFile
@@ -52,8 +53,14 @@
 
 #>
 param (
+  [Parameter(ParameterSetName = 'DomainFile')]
   [string]$DomainFile = '',
+
+  [Parameter(ParameterSetName = 'Domain')]
   [string]$Domain = '',
+
+  [Parameter(ParameterSetName = 'DomainFile')]
+  [Parameter(ParameterSetName = 'Domain')]
   [switch]$ExportUsersToCsv
 )
 
@@ -62,7 +69,13 @@ $scriptPath = Split-Path -Parent -Path $MyInvocation.MyCommand.Path
 
 $domainList = @()
 
+function Get-RecipientObjects {
+  Write-Host ('Gathering recipient objects. It might take some time.')
+  $script:recipients = Get-Recipient -ResultSize Unlimited
+}
+
 function Get-RecipientsForDomain {
+  [CmdletBinding()]
   param (
     [string]$DomainName = ''
   )
@@ -71,15 +84,15 @@ function Get-RecipientsForDomain {
 
     Write-Verbose -Message ('Searching recipients for [{0}]' -f $DomainName)
     
-    $recipients = Get-Recipient -ResultSize Unlimited | Where {$_.EmailAddresses -like "*@$DomainName"}
+    $filteredRecipients = $script:recipients | Where-Object {$_.EmailAddresses -like ('*@{0}' -f $DomainName)}
 
     $object = New-Object -TypeName psobject
     $object | Add-Member -MemberType NoteProperty -Name DomainName -Value $DomainName
-    $object | Add-Member -MemberType NoteProperty -Name RecipientCount -Value ($recipients | Measure-Object).Count
+    $object | Add-Member -MemberType NoteProperty -Name RecipientCount -Value ($filteredRecipients | Measure-Object).Count
 
-    if($ExportUsersToCsv) {
-        $csvFile = Join-Path -Path $scriptPath -ChildPath ('Recipients-{0}.csv' -f $DomainName)
-        $recipients | Sort-Object Name | Select Name,PrimarySmtpAddress,RecipientType | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8 -Force -Confirm:$false
+    if($ExportUsersToCsv -and ((($filteredRecipients | Measure-Object).Count) -gt 0)) {
+      $csvFile = Join-Path -Path $scriptPath -ChildPath ('Recipients-{0}.csv' -f $DomainName)
+      $filteredRecipients | Sort-Object -Property Name | Select-Object -Property Name,PrimarySmtpAddress,RecipientType | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8 -Force -Confirm:$false
     }
   }
 
@@ -87,24 +100,31 @@ function Get-RecipientsForDomain {
 }
 
 if($Domain -ne '') {
-  Write-Host ('Calling Get-RecipientsForDomain for [{0}]' -f $DomainName)
   
-    $domainList += Get-RecipientsForDomain -DomainName $Domain.Trim()
+  Get-RecipientObjects
+  
+  Write-Verbose -Message ('Calling Get-RecipientsForDomain for [{0}]' -f $Domain)
+  
+  $domainList += Get-RecipientsForDomain -DomainName $Domain.Trim()
 
-    $domainList
+  $domainList
 }
 elseif ($DomainFile -ne '') {
-    $domainFilePath = Join-Path -Path $scriptPath -ChildPath $DomainFile
+  
+  Get-RecipientObjects
 
-    if(Test-Path -Path $domainFilePath) {
-        $domainsToCheck = Get-Content -Path $domainFilePath
-        foreach($Domain in $domainsToCheck) {
-            $domainList += Get-RecipientsForDomain -DomainName $Domain.Trim()
-        }
+  $domainFilePath = Join-Path -Path $scriptPath -ChildPath $DomainFile
+
+  if(Test-Path -Path $domainFilePath) {
+    $domainsToCheck = Get-Content -Path $domainFilePath
+    foreach($Domain in $domainsToCheck) {
+      Write-Verbose -Message ('Calling Get-RecipientsForDomain for [{0}]' -f $Domain)
+      $domainList += Get-RecipientsForDomain -DomainName $Domain.Trim()
     }
+  }
 
-    $domainList
+  $domainList
 }
 else {
-  Write-Warning 'Nothing to do.'
+  Write-Warning -Message 'Nothing to do.'
 }
