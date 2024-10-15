@@ -1,39 +1,42 @@
 <#
     .SYNOPSIS
+
     Find Exchange recipient objects for a single or multiple domains.
-   
+
     Thomas Stensitzki
-	
-    THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE 
+
+    THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
-	
-    Version 1.1, 2021-09-14
+
+    Version 1.2, 2024-10-15
 
     Ideas, comments, and suggestions via GitHub.
- 
-    .LINK  
-    http://www.granikos.eu/en/scripts
-   
-	
+
     .DESCRIPTION
-	
+
     This script finds recipient objects for a single domain or a list of domains. An overview
     containing the number of found recipients is displayed as output.
     You can export recipient details as CSV if needed.
-    
+
     Tested with Exchange Server 2016 and Exchange Server 2019.
 
-    .NOTES 
-    Requirements 
-    - Windows Server 2016+     
+    .LINK
+
+    https://scripts.granikos.eu
+
+    .NOTES
+
+    Requirements
+    - Windows Server 2016+
     - Administrative Exchange Server 2016+ Management Shell
 
-    Revision History 
-    -------------------------------------------------------------------------------- 
-    1.0 Initial community release 
+    Revision History
+    --------------------------------------------------------------------------------
+    1.0 Initial community release
     1.1 Some PowerShell performance enhancements
-    
-	
+    1.2 Minor code enhancements
+
+
     .PARAMETER DomainFile
     Filename of a simple txt file containing one domain name per row.
 
@@ -69,21 +72,35 @@ $scriptPath = Split-Path -Parent -Path $MyInvocation.MyCommand.Path
 
 $domainList = @()
 
+<#
+  .SYNOPSIS
+  Get all recipient objects
+#>
 function Get-RecipientObjects {
   Write-Host ('Gathering recipient objects. It might take some time.')
   $script:recipients = Get-Recipient -ResultSize Unlimited
 }
 
+<#
+  .SYNOPSIS
+  Get recipients for a specific domain
+
+  .DESCRIPTION
+  The function retrieves all recipients that have a proxy address with the specified domain name.
+
+  .PARAMETER DomainName
+  The domain name to search for.
+#>
 function Get-RecipientsForDomain {
   [CmdletBinding()]
   param (
     [string]$DomainName = ''
   )
-  
+
   if ($DomainName -ne '') {
 
     Write-Verbose -Message ('Searching recipients for [{0}]' -f $DomainName)
-    
+
     $filteredRecipients = $script:recipients | Where-Object {$_.EmailAddresses -like ('*@{0}' -f $DomainName)}
 
     $object = New-Object -TypeName psobject
@@ -100,17 +117,17 @@ function Get-RecipientsForDomain {
 }
 
 if($Domain -ne '') {
-  
+
   Get-RecipientObjects
-  
+
   Write-Verbose -Message ('Calling Get-RecipientsForDomain for [{0}]' -f $Domain)
-  
+
   $domainList += Get-RecipientsForDomain -DomainName $Domain.Trim()
 
   $domainList
 }
 elseif ($DomainFile -ne '') {
-  
+
   Get-RecipientObjects
 
   $domainFilePath = Join-Path -Path $scriptPath -ChildPath $DomainFile
